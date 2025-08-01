@@ -1,0 +1,12 @@
+[workspace]
+authors = ["mattbocc <matthew.boccalon@live.ca>"]
+channels = ["conda-forge"]
+name = "annotationdb-seeding"
+platforms = ["osx-arm64"]
+version = "0.1.0"
+
+[tasks]
+
+[dependencies]
+python = ">=3.13.5,<3.14"
+sqlalchemy = ">=2.0.42,<3"
