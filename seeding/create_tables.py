@@ -1,7 +1,8 @@
-from typing import List
+from typing import List, date
 from typing import Optional
 from sqlalchemy import String, Float, Integer, ForeignKey, LargeBinary
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+import Date
 
 class Base(DeclarativeBase):
     pass
@@ -57,20 +58,16 @@ class Pubchem(Base):
     literature_count: Mapped[int] = mapped_column(Integer)
     annotation_types: Mapped[str] = mapped_column(String(100))
     annotation_type_count: Mapped[int] = mapped_column(Integer)
+    chembl_id: Mapped[int] = mapped_column(ForeignKey("chembl.cid"))
+    date_added: Mapped[date] = mapped_column()
 
-class User(Base):
+
+class Chembl(Base):
     __tablename__ = "chembl"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(30))
-    fullname: Mapped[Optional[str]]
-    def __repr__(self) -> str:
-        return f"User(id={self.id!r}, name={self.name!r}, fullname={self.fullname!r})"
+    cid: Mapped[int] = mapped_column(primary_key=True)
+    pubchem_cid: Mapped[int] = mapped_column(ForeignKey("pubchem.cid"))
 
 
-class User(Base):
+class Cellosaurus(Base):
     __tablename__ = "cellosaurus"
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(30))
-    fullname: Mapped[Optional[str]]
-    def __repr__(self) -> str:
-        return f"User(id={self.id!r}, name={self.name!r}, fullname={self.fullname!r})"

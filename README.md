@@ -8,7 +8,8 @@ Repository for building and populating tables in the AnnotationDB MySQL database
 ## Environment Variables
 ```Bash
 DATABASE_IP=
-DATABASE_PASS=
+PORT=
 DATABASE_USER=
+DATABASE_PASS=
 SELECTED_DB=
 ```
