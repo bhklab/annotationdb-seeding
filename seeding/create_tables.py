@@ -1,8 +1,8 @@
-from typing import List, date
+from typing import List
+from datetime import date
 from typing import Optional
 from sqlalchemy import String, Float, Integer, ForeignKey, LargeBinary
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-import Date
 
 class Base(DeclarativeBase):
     pass
@@ -52,7 +52,7 @@ class Pubchem(Base):
     effective_rotor_count_3d: Mapped[float] = mapped_column(Float)
     conformer_count_3d: Mapped[int] = mapped_column(Integer)
     fingerprint_2d: Mapped[bytes] = mapped_column(LargeBinary)
-    title: Mapped[str] = mapped_column(String(100))
+    title: Mapped[str] = mapped_column(String(255))
     patent_count: Mapped[int] = mapped_column(Integer)
     patent_family_count: Mapped[int] = mapped_column(Integer)
     literature_count: Mapped[int] = mapped_column(Integer)
