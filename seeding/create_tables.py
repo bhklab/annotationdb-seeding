@@ -1,21 +1,24 @@
-from typing import List, date
+from typing import List
 from typing import Optional
 from sqlalchemy import String, Float, Integer, ForeignKey, LargeBinary
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-import Date
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from datetime import datetime
+
 
 class Base(DeclarativeBase):
     pass
 
+
 class Pubchem(Base):
     __tablename__ = "pubchem"
-    
+
     cid: Mapped[int] = mapped_column(primary_key=True)
     molecular_formula: Mapped[str] = mapped_column(String(300))
     molecular_weight: Mapped[str] = mapped_column(String(50))
     smiles: Mapped[str] = mapped_column(String(2000))
-    canonical_smiles: Mapped[str] = mapped_column(String(2000))
-    isomeric_smiles: Mapped[str] = mapped_column(String(2000))
+    # canonical_smiles: Mapped[str] = mapped_column(String(2000))
+    # isomeric_smiles: Mapped[str] = mapped_column(String(2000))
+    connectivity_smiles: Mapped[str] = mapped_column(String(2000))
     inchi: Mapped[str] = mapped_column(String(1000))
     inchikey: Mapped[str] = mapped_column(String(28))
     iupac_name: Mapped[str] = mapped_column(String(1000))
@@ -58,16 +61,19 @@ class Pubchem(Base):
     literature_count: Mapped[int] = mapped_column(Integer)
     annotation_types: Mapped[str] = mapped_column(String(100))
     annotation_type_count: Mapped[int] = mapped_column(Integer)
-    chembl_id: Mapped[int] = mapped_column(ForeignKey("chembl.cid"))
-    date_added: Mapped[date] = mapped_column()
+    name: Mapped[str] = mapped_column(String(300))
+    # chembl_id: Mapped[int] = mapped_column(ForeignKey("chembl.cid"))
+    chembl_id: Mapped[int] = mapped_column(String(200))
+    synonyms: Mapped[str] = mapped_column(String(1000))
+    # date_added: Mapped[datetime] = mapped_column()
 
 
-class Chembl(Base):
-    __tablename__ = "chembl"
-    cid: Mapped[int] = mapped_column(primary_key=True)
-    pubchem_cid: Mapped[int] = mapped_column(ForeignKey("pubchem.cid"))
+# class Chembl(Base):
+#     __tablename__ = "chembl"
+#     cid: Mapped[int] = mapped_column(primary_key=True)
+#     pubchem_cid: Mapped[int] = mapped_column(ForeignKey("pubchem.cid"))
 
 
-class Cellosaurus(Base):
-    __tablename__ = "cellosaurus"
-    id: Mapped[int] = mapped_column(primary_key=True)
+# class Cellosaurus(Base):
+#     __tablename__ = "cellosaurus"
+#     id: Mapped[int] = mapped_column(primary_key=True)
