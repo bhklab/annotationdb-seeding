@@ -13,7 +13,9 @@ class Compounds(Base):
     cid: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(Text())
     mapped_name: Mapped[str] = mapped_column(Text())
-    molecule_chembl_id: Mapped[str] = mapped_column(String(200), unique=True)
+    molecule_chembl_id: Mapped[str] = mapped_column(
+        String(200), unique=True, nullable=True
+    )
     molecular_formula: Mapped[str] = mapped_column(String(300))
     molecular_weight: Mapped[str] = mapped_column(String(50))
     smiles: Mapped[str] = mapped_column(String(2000))
@@ -110,7 +112,10 @@ class ChemblMechanism(Base):
     direct_interaction: Mapped[int] = mapped_column(Integer)
     disease_efficacy: Mapped[int] = mapped_column(Integer)
     max_phase: Mapped[int] = mapped_column(Integer)
-    mec_id: Mapped[int] = mapped_column(Integer)
+    mec_id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+    )
     mechanism_comment: Mapped[str] = mapped_column(Text())
     # mechanism_refs: Mapped[] = mapped_column() # best way to represent?
     molecular_mechanism: Mapped[int] = mapped_column(Integer)

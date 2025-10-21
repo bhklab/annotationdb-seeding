@@ -24,15 +24,56 @@ def align_to_model(df: pd.DataFrame, model) -> pd.DataFrame:
     return df[[c for c in cols if c in df.columns]]
 
 
-# Read the attached files directly
 compounds_df = pd.read_csv("data_extraction/drugs/pubchem/output_data/drug_out.csv")
+
+# Remove any duplicate entries based on cids
+if "cid" in compounds_df.columns:
+    before = len(compounds_df)
+    compounds_df = compounds_df.drop_duplicates(subset=["cid"], keep="first")
+    after = len(compounds_df)
+    print(
+        f"[Cleanup] Removed {before - after} duplicate cid rows; kept {after} unique entries."
+    )
+
 synonyms_df = pd.read_csv("data_extraction/drugs/pubchem/output_data/drug_synonyms.csv")
+
+# Remove any duplicate synonym entries based on cid/synonym combos
+if {"synonym", "pubchem_cid"}.issubset(synonyms_df.columns):
+    before = len(synonyms_df)
+    synonyms_df = synonyms_df.drop_duplicates(
+        subset=["synonym", "pubchem_cid"], keep="first"
+    )
+    after = len(synonyms_df)
+    print(
+        f"[Cleanup] Removed {before - after} duplicate synonym/pubchem_cid rows; kept {after} unique entries."
+    )
+
 chembl_mech_df = pd.read_csv(
     "data_extraction/drugs/pubchem/output_data/chembl_mechanism.csv"
 )
+
+valid_chembls = set(compounds_df["molecule_chembl_id"].dropna().astype(str))
+before = len(chembl_mech_df)
+chembl_mech_df = chembl_mech_df[
+    chembl_mech_df["molecule_chembl_id"].astype(str).isin(valid_chembls)
+]
+print(
+    f"[Mechanism] Dropped {before - len(chembl_mech_df)} orphan rows with no matching CHEMBL ID in pubchem_compounds"
+)
+
+
 cell_lines_df = pd.read_csv(
     "data_extraction/cell_lines/cellosaurus/output_data/cell_lines_table_cleaned.csv"
 )
+
+# Remove any duplicate entries based on accession
+if "accession" in cell_lines_df.columns:
+    before = len(cell_lines_df)
+    cell_lines_df = cell_lines_df.drop_duplicates(subset=["accession"], keep="first")
+    after = len(cell_lines_df)
+    print(
+        f"[Cleanup] Removed {before - after} duplicate accession rows; kept {after} unique entries."
+    )
 
 # Align columns to ORM models
 compounds_df = align_to_model(compounds_df, Compounds)
