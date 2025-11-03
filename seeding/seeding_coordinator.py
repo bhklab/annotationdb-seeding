@@ -4,7 +4,14 @@ from dotenv import load_dotenv
 from urllib.parse import quote_plus
 import pandas as pd
 
-from create_tables import Base, Compounds, CompoundSynonyms, ChemblMechanism, CellLines
+from create_tables import (
+    Base,
+    Compounds,
+    CompoundSynonyms,
+    ChemblMechanism,
+    CellLines,
+    OncoTree,
+)
 
 load_dotenv(override=True)
 
@@ -66,20 +73,14 @@ cell_lines_df = pd.read_csv(
     "data_extraction/cell_lines/cellosaurus/output_data/cell_lines_table_cleaned.csv"
 )
 
-# Remove any duplicate entries based on accession
-if "accession" in cell_lines_df.columns:
-    before = len(cell_lines_df)
-    cell_lines_df = cell_lines_df.drop_duplicates(subset=["accession"], keep="first")
-    after = len(cell_lines_df)
-    print(
-        f"[Cleanup] Removed {before - after} duplicate accession rows; kept {after} unique entries."
-    )
+oncotree_df = pd.read_csv("data_extraction/oncotree/output_data/oncotree.csv")
 
 # Align columns to ORM models
 compounds_df = align_to_model(compounds_df, Compounds)
 synonyms_df = align_to_model(synonyms_df, CompoundSynonyms)
 chembl_mech_df = align_to_model(chembl_mech_df, ChemblMechanism)
 cell_lines_df = align_to_model(cell_lines_df, CellLines)
+oncotree_df = align_to_model(oncotree_df, OncoTree)
 
 # Insert into tables named by the ORM models
 compounds_df.to_sql(
@@ -93,4 +94,7 @@ chembl_mech_df.to_sql(
 )
 cell_lines_df.to_sql(
     name=CellLines.__tablename__, con=engine, if_exists="append", index=False
+)
+oncotree_df.to_sql(
+    name=OncoTree.__tablename__, con=engine, if_exists="append", index=False
 )
