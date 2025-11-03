@@ -1,6 +1,5 @@
 library(AnnotationGx)
 
-# --- 1) Pull tumor types and flatten list-columns ---
 df <- as.data.frame(getOncotreeTumorTypes())
 list_cols <- names(Filter(is.list, df))
 
@@ -12,10 +11,14 @@ df[list_cols] <- lapply(df[list_cols], function(col) {
   }, character(1))
 })
 
-# --- 2) Get the current OncoTree version metadata ---
+ # Rename columns to align schema
+names(df) <- sub("mainType", "main_type", names(df))
+names(df) <- sub("parent", "parent_code", names(df))
+names(df) <- sub("parentCode", "parent_code", names(df))
+names(df) <- sub("externalReferences", "external_references", names(df))
+
 ver <- as.data.frame(getOncotreeVersions())
 
-# Strip any HTML from descriptions and match the required sentence
 strip_html <- function(s) gsub("<[^>]+>", "", s)
 
 latest_row <- ver[ trimws(strip_html(ver$description)) ==
@@ -24,10 +27,7 @@ latest_row <- ver[ trimws(strip_html(ver$description)) ==
 version_api_identifier <- latest_row$api_identifier[1]
 version_release_date   <- as.character(as.Date(latest_row$release_date[1]))
 
-# --- 3) Append version fields to every tumor-type row ---
 df$version_api_identifier <- version_api_identifier
 df$version_release_date   <- version_release_date
 
-# --- 4) Write CSV ---
 write.csv(df, "output_data/oncotree.csv", row.names = FALSE, fileEncoding = "UTF-8")
-
