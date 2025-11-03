@@ -13,7 +13,9 @@ class Compounds(Base):
     cid: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(Text())
     mapped_name: Mapped[str] = mapped_column(Text())
-    molecule_chembl_id: Mapped[str] = mapped_column(String(200), unique=True)
+    molecule_chembl_id: Mapped[str] = mapped_column(
+        String(200), unique=True, nullable=True
+    )
     molecular_formula: Mapped[str] = mapped_column(String(300))
     molecular_weight: Mapped[str] = mapped_column(String(50))
     smiles: Mapped[str] = mapped_column(String(2000))
@@ -70,6 +72,13 @@ class Compounds(Base):
         back_populates="compound", cascade="all, delete-orphan"
     )
 
+    mechanisms: Mapped[list["ChemblMechanism"]] = relationship(
+        "ChemblMechanism",
+        primaryjoin="Compounds.molecule_chembl_id == foreign(ChemblMechanism.molecule_chembl_id)",
+        back_populates="compound",
+        lazy="selectin",
+    )
+
 
 # https://www.ebi.ac.uk/chembl/api/data/drug/schema?format=json
 # class ChemblDrugData(Base):
@@ -107,11 +116,15 @@ class ChemblMechanism(Base):
     parent_molecule_chembl_id: Mapped[str] = mapped_column(String(200))
     action_type: Mapped[str] = mapped_column(String(30))
     binding_site_comment: Mapped[str] = mapped_column(String(30))
+    mechanism_of_action: Mapped[str] = mapped_column(Text())
+    mechanism_comment: Mapped[str] = mapped_column(Text())
     direct_interaction: Mapped[int] = mapped_column(Integer)
     disease_efficacy: Mapped[int] = mapped_column(Integer)
     max_phase: Mapped[int] = mapped_column(Integer)
-    mec_id: Mapped[int] = mapped_column(Integer)
-    mechanism_comment: Mapped[str] = mapped_column(Text())
+    mec_id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+    )
     # mechanism_refs: Mapped[] = mapped_column() # best way to represent?
     molecular_mechanism: Mapped[int] = mapped_column(Integer)
     record_id: Mapped[int] = mapped_column(Integer)
@@ -126,6 +139,12 @@ class ChemblMechanism(Base):
     variant_sequence_sequence: Mapped[str] = mapped_column(Text())
     variant_sequence_tax_id: Mapped[int] = mapped_column(Integer)
     variant_sequence_version: Mapped[int] = mapped_column(Integer)
+
+    compound: Mapped["Compounds"] = relationship(
+        "Compounds",
+        primaryjoin="foreign(ChemblMechanism.molecule_chembl_id) == Compounds.molecule_chembl_id",
+        back_populates="mechanisms",
+    )
 
 
 # https://www.ebi.ac.uk/chembl/api/data/molecule/schema?format=json
@@ -253,3 +272,27 @@ class CompoundSynonyms(Base):
 
     ### ORM layer (fields below don't show up in table but are used in queries later on for convenience)
     compound: Mapped["Compounds"] = relationship(back_populates="synonyms")
+
+
+class OncoTree(Base):
+    __tablename__ = "oncotree"
+
+    # Tumor-type fields
+    code: Mapped[str] = mapped_column(String(32), primary_key=True)
+    name: Mapped[str] = mapped_column(Text())
+    main_type: Mapped[str] = mapped_column(String(200))
+    color: Mapped[str] = mapped_column(String(64))
+    level: Mapped[int] = mapped_column(Integer)
+    parent_code: Mapped[str] = mapped_column(String(32), index=True)
+
+    external_references: Mapped[str] = mapped_column(Text(), nullable=True)
+    history: Mapped[str] = mapped_column(Text(), nullable=True)
+    revocations: Mapped[str] = mapped_column(Text(), nullable=True)
+    precursors: Mapped[str] = mapped_column(Text(), nullable=True)
+    tissue: Mapped[str] = mapped_column(Text(), nullable=True)
+
+    version_api_identifier: Mapped[str] = mapped_column(String(100), index=True)
+    version_release_date: Mapped[str] = mapped_column(String(10))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
