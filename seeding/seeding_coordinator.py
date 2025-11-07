@@ -10,6 +10,8 @@ from create_tables import (
     CompoundSynonyms,
     ChemblMechanism,
     CellLines,
+    CellLineSynonyms,
+    CellLineDisease,
     OncoTree,
 )
 
@@ -73,6 +75,14 @@ cell_lines_df = pd.read_csv(
     "data_extraction/cell_lines/cellosaurus/output_data/cell_lines_table_cleaned.csv"
 )
 
+cell_lines_synonyms_df = pd.read_csv(
+    "data_extraction/cell_lines/cellosaurus/output_data/cell_line_synonyms.csv"
+)
+
+cell_lines_disease_df = pd.read_csv(
+    "data_extraction/cell_lines/cellosaurus/output_data/cell_line_diseases.csv"
+)
+
 oncotree_df = pd.read_csv("data_extraction/oncotree/output_data/oncotree.csv")
 
 # Align columns to ORM models
@@ -80,6 +90,8 @@ compounds_df = align_to_model(compounds_df, Compounds)
 synonyms_df = align_to_model(synonyms_df, CompoundSynonyms)
 chembl_mech_df = align_to_model(chembl_mech_df, ChemblMechanism)
 cell_lines_df = align_to_model(cell_lines_df, CellLines)
+cell_lines_synonyms_df = align_to_model(cell_lines_synonyms_df, CellLineSynonyms)
+cell_lines_disease_df = align_to_model(cell_lines_disease_df, CellLineDisease)
 oncotree_df = align_to_model(oncotree_df, OncoTree)
 
 # Insert into tables named by the ORM models
@@ -94,6 +106,12 @@ chembl_mech_df.to_sql(
 )
 cell_lines_df.to_sql(
     name=CellLines.__tablename__, con=engine, if_exists="append", index=False
+)
+cell_lines_synonyms_df.to_sql(
+    name=CellLineSynonyms.__tablename__, con=engine, if_exists="append", index=False
+)
+cell_lines_disease_df.to_sql(
+    name=CellLineDisease.__tablename__, con=engine, if_exists="append", index=False
 )
 oncotree_df.to_sql(
     name=OncoTree.__tablename__, con=engine, if_exists="append", index=False
