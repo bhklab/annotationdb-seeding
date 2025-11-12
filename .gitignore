@@ -7,3 +7,4 @@ __pycache__
 .Rhistory
 .RData
 .DS_Store
+backup_data
