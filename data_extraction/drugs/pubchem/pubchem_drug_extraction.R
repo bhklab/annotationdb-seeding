@@ -10,13 +10,35 @@ ts <- function() format(Sys.time(), "%Y-%m-%d %H:%M:%S")
 tic <- function() proc.time()[["elapsed"]]
 
 # Define input/output directories/filenames
-in_csv   <- "output_data/pset_drugs/pset_drugs_part2.csv"
+in_csv   <- "output_data/pset_drugs/pset_drugs_test.csv"
 out_dir  <- "output_data/pset_drugs/complete"
 
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 prop_out <- file.path(out_dir, "pset_drugs_out.csv")
 syn_out  <- file.path(out_dir, "pset_drugs_synonyms.csv")
 bio_out  <- file.path(out_dir, "pset_drugs_bioassays.csv")
+
+# Load allowed AIDs (Homo sapiens assays)
+aids_file <- "homosapien_aids.txt"
+allowed_aids <- character()
+aids_dt <- tryCatch(
+    fread(aids_file),
+    error = function(e) {
+        printf("[%s] WARNING: could not read AIDs file '%s': %s",
+               ts(), aids_file, e$message)
+        NULL
+    }
+)
+if (!is.null(aids_dt) && "aid" %in% names(aids_dt)) {
+    allowed_aids <- unique(as.character(trimws(aids_dt$aid)))
+    allowed_aids <- allowed_aids[nzchar(allowed_aids)]
+    printf("[%s] Loaded %d allowed AIDs from %s",
+           ts(), length(allowed_aids), aids_file)
+} else {
+    printf("[%s] WARNING: AIDs file missing or no 'aid' column; no AID filtering will be applied.",
+           ts())
+    allowed_aids <- character()
+}
 
 printf("[%s] Starting run", ts())
 run_start <- tic()
@@ -31,61 +53,66 @@ if (!"drug" %in% names(drugs)) {
 drug_names <- unique(na.omit(trimws(as.character(drugs$drug))))
 printf("[%s] Loaded %d unique names", ts(), length(drug_names))
 
-# Name mapping to CID
-safe_name_to_cid_one <- function(name, tries = 3, base_wait = 0.25) {
-    if (is.na(name) || !nzchar(name)) return(NULL)
-    enc <- curl::curl_escape(enc2utf8(name))
-	print(enc)
-    url <- sprintf("https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/%s/cids/JSON", enc)
-
-    for (i in seq_len(tries)) {
-        resp <- try(httr::GET(
-            url, httr::timeout(15),
-            httr::user_agent("AnnotationDB/pset_drugs (name2cid)")
-        ), silent = TRUE)
-
-        if (inherits(resp, "try-error")) {
-            if (i < tries) { Sys.sleep(base_wait * (1.5^(i - 1)) + runif(1,0,0.1)); next }
-            return(NULL)
-        }
-
-        sc <- httr::status_code(resp)
-        if (sc == 200) {
-            txt <- httr::content(resp, as = "text", encoding = "UTF-8")
-            parsed <- try(jsonlite::fromJSON(txt, simplifyVector = TRUE), silent = TRUE)
-            if (inherits(parsed, "try-error")) {
-                if (i < tries) { Sys.sleep(base_wait * (1.5^(i - 1)) + runif(1,0,0.1)); next }
-                return(NULL)
-            }
-            cids <- parsed$IdentifierList$CID
-            if (is.null(cids) || !length(cids)) return(NULL)
-            return(data.frame(name = name, cid = as.character(cids[1]), stringsAsFactors = FALSE))
-        }
-
-        if (sc == 404) return(NULL)
-        if (sc == 429 || sc >= 500) {
-            if (i < tries) { Sys.sleep(base_wait * (1.5^(i - 1)) + runif(1,0,0.2)); next }
-            return(NULL)
-        }
-        return(NULL)
-    }
-    NULL
-}
-
+# Name mapping to CID, 10 names at a time with 5s delay
 safe_map_names_to_cids <- function(names_vec) {
-    names_vec <- unique(na.omit(names_vec))
+    names_vec <- unique(trimws(na.omit(as.character(names_vec))))
     names_vec <- names_vec[nzchar(names_vec)]
-    if (!length(names_vec)) return(data.frame(name = character(), cid = character()))
+    if (!length(names_vec)) {
+        return(data.frame(name = character(), cid = character(), stringsAsFactors = FALSE))
+    }
 
-    workers <- max(1, min(8, parallel::detectCores(TRUE) - 1))
-    printf("[%s] Mapping names -> CIDs with %d workers ...", ts(), workers)
-    plan(multisession, workers = workers)
-    out <- future_lapply(names_vec, safe_name_to_cid_one, future.seed = TRUE)
-    plan(sequential)
+    printf("[%s] Starting mapCompound2CID in mini-batches of 5", ts())
 
-    out <- Filter(Negate(is.null), out)
-    if (!length(out)) return(data.frame(name = character(), cid = character()))
-    unique(do.call(rbind, out))
+    # split names into groups (current code uses 10; change to 5 if you want strict size 5)
+    mini_chunks <- split(seq_along(names_vec),
+                         ceiling(seq_along(names_vec) / 10L))
+
+    all_res <- vector("list", length(mini_chunks))
+    mini_i  <- 0L
+
+    for (mc in mini_chunks) {
+        mini_i <- mini_i + 1L
+        sub_names <- names_vec[mc]
+
+        printf("[%s]   mapCompound2CID mini-batch %d/%d | names: %d",
+               ts(), mini_i, length(mini_chunks), length(sub_names))
+
+        agx <- tryCatch(
+            AnnotationGx::mapCompound2CID(sub_names, first = TRUE),
+            error = function(e) {
+                printf("[%s]   mapCompound2CID error (mini-batch %d): %s",
+                       ts(), mini_i, e$message)
+                NULL
+            }
+        )
+
+        if (!is.null(agx) && nrow(agx)) {
+            stopifnot(all(c("name", "cids") %in% names(agx)))
+            df <- data.frame(
+                name = as.character(agx$name),
+                cid  = as.character(agx$cids),
+                stringsAsFactors = FALSE
+            )
+            df <- df[!is.na(df$cid) & nzchar(df$cid), , drop = FALSE]
+            if (nrow(df)) {
+                all_res[[mini_i]] <- df
+            }
+        } else {
+            printf("[%s]   No CIDs returned in this mini-batch", ts())
+        }
+
+        # sleep between mini-batches to be gentle on PubChem
+        Sys.sleep(5)
+    }
+
+    out <- do.call(rbind, all_res)
+    if (is.null(out)) {
+        out <- data.frame(name = character(), cid = character(), stringsAsFactors = FALSE)
+    }
+
+    out <- unique(out)
+    printf("[%s] Finished mapCompound2CID: %d mapped name(s)", ts(), nrow(out))
+    out
 }
 
 map_t0 <- tic()
@@ -326,23 +353,26 @@ fetch_assay_descriptions_for_aids <- function(aids_chr) {
     rbindlist(out, fill = TRUE)
 }
 
-# Bioassay Summary limited to first 50
 fetch_bioassay_summary_one <- function(cid, tries = 2, base_wait = 0.25) {
     cid_chr <- as.character(cid)
     url <- sprintf("https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/%s/assaysummary/JSON", cid_chr)
+
     for (i in seq_len(tries)) {
         resp <- try(httr::GET(
             url, httr::timeout(30),
             httr::user_agent("AnnotationDB/pset_drugs (assaysummary)")
         ), silent = TRUE)
+
         if (inherits(resp, "try-error")) {
             if (i < tries) { Sys.sleep(base_wait * (1.5^(i - 1)) + runif(1,0,0.1)); next }
             return(data.table())
         }
+
         if (httr::status_code(resp) == 200) {
             txt <- httr::content(resp, as = "text", encoding = "UTF-8")
             j <- try(jsonlite::fromJSON(txt, simplifyVector = FALSE), silent = TRUE)
             if (inherits(j, "try-error")) return(data.table())
+
             tab <- j$Table
             if (is.null(tab)) return(data.table())
 
@@ -359,28 +389,29 @@ fetch_bioassay_summary_one <- function(cid, tries = 2, base_wait = 0.25) {
             rows <- tab$Row
             if (is.null(rows) || !length(rows)) return(data.table())
 
-            # Only take the first 50
-            rows <- rows[seq_len(min(50L, length(rows)))]
+            # ⛔ OLD: rows <- rows[1:50]
+            # ✅ NEW: use ALL rows without a cap
+            # (do nothing)
 
             out <- lapply(rows, function(r) {
                 vals <- try(unlist(r$Cell, use.names = FALSE), silent = TRUE)
                 if (inherits(vals, "try-error")) return(NULL)
                 pick <- function(ix) if (is.na(ix) || ix < 1 || ix > length(vals)) NA_character_ else as.character(vals[ix])
 
-                aid   <- pick(ix_aid)
+                aid <- pick(ix_aid)
 
-                # Target name with fallbacks
                 tname <- pick(ix_tname)
                 if (is.na(tname) || !nzchar(tname)) tname <- pick(ix_tacc)
                 if (is.na(tname) || !nzchar(tname)) {
-                    g <- pick(ix_gene); if (!is.na(g) && nzchar(g)) tname <- paste0("GeneID:", g)
+                    g <- pick(ix_gene)
+                    if (!is.na(g) && nzchar(g)) tname <- paste0("GeneID:", g)
                 }
                 if (is.na(tname) || !nzchar(tname)) tname <- pick(ix_aname)
 
                 data.table(
-                    pubchem_cid             = cid_chr,
-                    bioassay_aid            = aid,
-                    bioassay_target_name    = tname
+                    pubchem_cid          = cid_chr,
+                    bioassay_aid         = aid,
+                    bioassay_target_name = tname
                 )
             })
 
@@ -389,22 +420,26 @@ fetch_bioassay_summary_one <- function(cid, tries = 2, base_wait = 0.25) {
             dt <- dt[!is.na(bioassay_aid) & nzchar(bioassay_aid)]
             dt <- unique(dt)
 
-            # Augment via assay descriptions
+            # augment with assay descriptions
             aids <- unique(dt$bioassay_aid)
             desc_dt <- fetch_assay_descriptions_for_aids(aids)
             setnames(desc_dt, "aid", "bioassay_aid")
+
             dt <- merge(dt, desc_dt, by = "bioassay_aid", all.x = TRUE, sort = FALSE)
 
             return(dt)
         }
+
         sc <- httr::status_code(resp)
         if (sc %in% c(429) || sc >= 500) {
             if (i < tries) { Sys.sleep(base_wait * (1.5^(i - 1)) + runif(1,0,0.2)); next }
         }
+
         return(data.table())
     }
     data.table()
 }
+
 
 fetch_bioassay_for_cids <- function(cids_chr) {
     if (!length(cids_chr)) return(data.table())
@@ -429,61 +464,148 @@ for (idx in chunks) {
 
     # --- Properties ---
     prop_rows <- 0L
-    cids_num  <- suppressWarnings(as.numeric(chunk$cid))
-    names_map <- setNames(chunk$name, nm = as.character(chunk$cid))
-    prop <- tryCatch(
-        AnnotationGx::mapCID2Properties(ids = cids_num, properties = properties),
-        error = function(e) { printf("[%s]   mapCID2Properties error: %s", ts(), e$message); NULL }
-    )
-    if (!is.null(prop) && nrow(prop)) {
-        prop$CID  <- as.character(prop$CID)
-        prop$name <- names_map[prop$CID]
+    local_props_list <- list()
 
-        chembl <- tryCatch(
-            AnnotationGx::annotatePubchemCompound(as.numeric(prop$CID), "ChEMBL ID"),
-            error = function(e) { printf("[%s]   annotatePubchemCompound error: %s", ts(), e$message); NA_character_ }
+    cids_chr_chunk <- as.character(chunk$cid)
+    mini_chunks <- split(seq_along(cids_chr_chunk),
+                         ceiling(seq_along(cids_chr_chunk) / 10L))
+
+    mini_i <- 0L
+    for (mc in mini_chunks) {
+        mini_i <- mini_i + 1L
+        sub_cids_chr <- cids_chr_chunk[mc]
+        sub_cids_num <- suppressWarnings(as.numeric(sub_cids_chr))
+
+        names_map <- setNames(chunk$name[match(sub_cids_chr, chunk$cid)],
+                              nm = as.character(sub_cids_chr))
+
+        printf("[%s]   Properties mini-batch %d/%d | CIDs: %d",
+               ts(), mini_i, length(mini_chunks), length(sub_cids_chr))
+
+        prop <- tryCatch(
+            AnnotationGx::mapCID2Properties(ids = sub_cids_num, properties = properties),
+            error = function(e) {
+                printf("[%s]   mapCID2Properties error (mini-batch): %s", ts(), e$message)
+                NULL
+            }
         )
-        if (is.atomic(chembl) && length(chembl) %in% c(1, nrow(prop))) {
-            prop$ChEMBL_ID <- chembl
+
+        if (!is.null(prop) && nrow(prop)) {
+            prop$CID  <- as.character(prop$CID)
+            prop$name <- names_map[prop$CID]
+
+            chembl <- tryCatch(
+                AnnotationGx::annotatePubchemCompound(as.numeric(prop$CID), "ChEMBL ID"),
+                error = function(e) {
+                    printf("[%s]   annotatePubchemCompound error (mini-batch): %s", ts(), e$message)
+                    NA_character_
+                }
+            )
+
+            if (is.atomic(chembl) && length(chembl) %in% c(1, nrow(prop))) {
+                prop$ChEMBL_ID <- chembl
+            } else {
+                prop$ChEMBL_ID <- vapply(prop$CID, function(x)
+                    tryCatch(AnnotationGx::annotatePubchemCompound(as.numeric(x), "ChEMBL ID"),
+                             error = function(e) NA_character_), character(1))
+            }
+
+            # ChEMBL max_phase
+            prop$chembl_max_phase <- vapply(as.character(prop$ChEMBL_ID), fetch_chembl_phase, integer(1))
+
+            local_props_list[[length(local_props_list) + 1L]] <- as.data.table(prop)
         } else {
-            prop$ChEMBL_ID <- vapply(prop$CID, function(x)
-                tryCatch(AnnotationGx::annotatePubchemCompound(as.numeric(x), "ChEMBL ID"),
-                         error = function(e) NA_character_), character(1))
+            printf("[%s]   No properties returned for this mini-batch", ts())
         }
 
-        # ChEMBL max_phase
-        prop$chembl_max_phase <- vapply(as.character(prop$ChEMBL_ID), fetch_chembl_phase, integer(1))
+        # Respectful pause between properties mini-batches
+        Sys.sleep(5)
+    }
+
+    if (length(local_props_list)) {
+        prop_dt <- rbindlist(local_props_list, fill = TRUE)
 
         # Rename to target schema
-        present <- intersect(names(rename_map), names(prop))
-        names(prop)[match(present, names(prop))] <- rename_map[present]
-        if (!"cid" %in% names(prop) && "CID" %in% names(prop)) {
-            data.table::setnames(prop, "CID", "cid")
+        present <- intersect(names(rename_map), names(prop_dt))
+        names(prop_dt)[match(present, names(prop_dt))] <- rename_map[present]
+        if (!"cid" %in% names(prop_dt) && "CID" %in% names(prop_dt)) {
+            data.table::setnames(prop_dt, "CID", "cid")
         }
 
         # drug_like derived from annotation_types
-        prop_dt <- as.data.table(prop)
         prop_dt[, drug_like := !is.na(annotation_types) &
                             grepl("(^|\\|)\\s*Drug and Medication Information\\s*(\\||$)",
                                   annotation_types, ignore.case = TRUE)]
 
         prop_rows <- nrow(prop_dt)
-        props_all[[length(props_all) + 1]] <- prop_dt
-        printf("[%s]   Properties rows: %d", ts(), prop_rows)
+        props_all[[length(props_all) + 1L]] <- prop_dt
+        printf("[%s]   Properties rows (chunk): %d", ts(), prop_rows)
     } else {
         printf("[%s]   No properties returned for this chunk", ts())
     }
 
-    # Synonyms (batch)
-    syn_dt <- fetch_synonyms_batch(unique(chunk$cid))
-    syn_rows <- if (nrow(syn_dt)) nrow(syn_dt) else 0L
-    if (syn_rows) syn_all[[length(syn_all) + 1]] <- syn_dt
+    # --- Synonyms  ---
+    syn_rows <- 0L
+    local_syn_list <- list()
+    syn_cids_chunk <- unique(chunk$cid)
+    syn_mini_chunks <- split(seq_along(syn_cids_chunk),
+                             ceiling(seq_along(syn_cids_chunk) / 10L))
+
+    syn_i <- 0L
+    for (sc_idx in syn_mini_chunks) {
+        syn_i <- syn_i + 1L
+        sub_syn_cids <- syn_cids_chunk[sc_idx]
+
+        printf("[%s]   Synonyms mini-batch %d/%d | CIDs: %d",
+               ts(), syn_i, length(syn_mini_chunks), length(sub_syn_cids))
+
+        syn_dt_sub <- fetch_synonyms_batch(sub_syn_cids)
+        if (nrow(syn_dt_sub)) {
+            local_syn_list[[length(local_syn_list) + 1L]] <- syn_dt_sub
+            syn_rows <- syn_rows + nrow(syn_dt_sub)
+        }
+
+        Sys.sleep(5)
+    }
+
+    if (length(local_syn_list)) {
+        syn_dt <- rbindlist(local_syn_list, fill = TRUE)
+        syn_all[[length(syn_all) + 1L]] <- syn_dt
+    } else {
+        syn_dt <- data.table()
+    }
     printf("[%s]   Synonyms rows: %d", ts(), syn_rows)
 
-    # Bioassays (batch) ---
-    bio_dt <- fetch_bioassay_for_cids(unique(chunk$cid))
-    bio_rows <- if (nrow(bio_dt)) nrow(bio_dt) else 0L
-    if (bio_rows) bio_all[[length(bio_all) + 1]] <- bio_dt
+    # --- Bioassays  ---
+    bio_rows <- 0L
+    local_bio_list <- list()
+    bio_cids_chunk <- unique(chunk$cid)
+    bio_mini_chunks <- split(seq_along(bio_cids_chunk),
+                             ceiling(seq_along(bio_cids_chunk) / 10L))
+
+    bio_i <- 0L
+    for (bc_idx in bio_mini_chunks) {
+        bio_i <- bio_i + 1L
+        sub_bio_cids <- bio_cids_chunk[bc_idx]
+
+        printf("[%s]   Bioassays mini-batch %d/%d | CIDs: %d",
+               ts(), bio_i, length(bio_mini_chunks), length(sub_bio_cids))
+
+        bio_dt_sub <- fetch_bioassay_for_cids(sub_bio_cids)
+        if (nrow(bio_dt_sub)) {
+            local_bio_list[[length(local_bio_list) + 1L]] <- bio_dt_sub
+            bio_rows <- bio_rows + nrow(bio_dt_sub)
+        }
+
+        Sys.sleep(5)
+    }
+
+    if (length(local_bio_list)) {
+        bio_dt <- rbindlist(local_bio_list, fill = TRUE)
+        bio_all[[length(bio_all) + 1L]] <- bio_dt
+    } else {
+        bio_dt <- data.table()
+    }
     printf("[%s]   Bioassays rows: %d", ts(), bio_rows)
 
     Sys.sleep(0.15)
@@ -495,10 +617,31 @@ syn_all   <- if (length(syn_all))   rbindlist(syn_all,   fill = TRUE) else data.
 bio_all   <- if (length(bio_all))   rbindlist(bio_all,   fill = TRUE) else data.table()
 printf("[%s] Combined totals — props: %d | syns: %d | bio: %d", ts(), nrow(props_all), nrow(syn_all), nrow(bio_all))
 
+# Filter bioassays to only those whose AID is in the allowed list
+if (length(allowed_aids) && nrow(bio_all)) {
+    before_n <- nrow(bio_all)
+    bio_all <- bio_all[bioassay_aid %in% allowed_aids]
+    printf("[%s] Filtered bio by AIDs list: %d -> %d rows",
+           ts(), before_n, nrow(bio_all))
+} else {
+    printf("[%s] No AID filtering applied (either no allowed_aids or no bio_all rows).", ts())
+}
+
 # Deduplicate conservatively
-if (nrow(props_all)) { props_all <- unique(props_all); printf("[%s] Dedup props -> %d", ts(), nrow(props_all)) }
-if (nrow(syn_all))   { syn_all[, key := paste0(tolower(synonym), "::", pubchem_cid)]; syn_all <- syn_all[!duplicated(key)][, key := NULL]; printf("[%s] Dedup syns -> %d", ts(), nrow(syn_all)) }
-if (nrow(bio_all))   { bio_all[, key := paste0(pubchem_cid, "::", bioassay_aid)];      bio_all <- bio_all[!duplicated(key)][, key := NULL];      printf("[%s] Dedup bio -> %d", ts(), nrow(bio_all)) }
+if (nrow(props_all)) {
+    props_all <- unique(props_all)
+    printf("[%s] Dedup props -> %d", ts(), nrow(props_all))
+}
+if (nrow(syn_all)) {
+    syn_all[, key := paste0(tolower(synonym), "::", pubchem_cid)]
+    syn_all <- syn_all[!duplicated(key)][, key := NULL]
+    printf("[%s] Dedup syns -> %d", ts(), nrow(syn_all))
+}
+if (nrow(bio_all)) {
+    bio_all[, key := paste0(pubchem_cid, "::", bioassay_aid)]
+    bio_all <- bio_all[!duplicated(key)][, key := NULL]
+    printf("[%s] Dedup bio -> %d", ts(), nrow(bio_all))
+}
 
 # Writing Outputs
 printf("[%s] Writing outputs ...", ts())
