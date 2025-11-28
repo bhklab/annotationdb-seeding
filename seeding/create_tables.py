@@ -1,4 +1,4 @@
-from sqlalchemy import String, Float, Integer, ForeignKey, Text, DateTime, func
+from sqlalchemy import String, Float, Integer, ForeignKey, Text, Boolean, DateTime, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from datetime import datetime
 
@@ -63,6 +63,7 @@ class Compounds(Base):
     literature_count: Mapped[int] = mapped_column(Integer)
     annotation_types: Mapped[str] = mapped_column(Text())
     annotation_type_count: Mapped[int] = mapped_column(Integer)
+    fda_approval: Mapped[bool] = mapped_column(Boolean)
     date_added: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -81,7 +82,7 @@ class Compounds(Base):
 
 
 class CompoundSynonyms(Base):
-    __tablename__ = "drug_synonyms"
+    __tablename__ = "compound_synonyms"
 
     synonym: Mapped[str] = mapped_column(String(700), primary_key=True)
     pubchem_cid: Mapped[int] = mapped_column(
@@ -96,6 +97,30 @@ class CompoundSynonyms(Base):
 
     ### ORM layer (fields below don't show up in table but are used in queries later on for convenience)
     compound: Mapped["Compounds"] = relationship(back_populates="synonyms")
+
+
+class CompoundBioAssays(Base):
+    __tablename__ = "compound_bioassays"
+
+    bioassay_aid: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+    )
+    pubchem_cid: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("pubchem_compounds.cid", ondelete="CASCADE"),
+        primary_key=True,
+    )
+
+
+class BioAssays(Base):
+    __tablename__ = "bioassays"
+
+    bioassay_aid: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("compound_bioassays.cid", ondelete="CASCADE"),
+        primary_key=True,
+    )
 
 
 # https://www.ebi.ac.uk/chembl/api/data/drug/schema?format=json
