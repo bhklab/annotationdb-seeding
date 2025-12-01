@@ -8,6 +8,8 @@ from create_tables import (
     Base,
     Compounds,
     CompoundSynonyms,
+    CompoundBioAssays,
+    BioAssays,
     ChemblMechanism,
     CellLines,
     CellLineSynonyms,
@@ -33,7 +35,9 @@ def align_to_model(df: pd.DataFrame, model) -> pd.DataFrame:
     return df[[c for c in cols if c in df.columns]]
 
 
-compounds_df = pd.read_csv("data_extraction/drugs/pubchem/output_data/drug_out.csv")
+compounds_df = pd.read_csv(
+    "data_extraction/drugs/pubchem/output_data/overlap/complete/overlap_out.csv"
+)
 
 # Remove any duplicate entries based on cids
 if "cid" in compounds_df.columns:
@@ -44,7 +48,9 @@ if "cid" in compounds_df.columns:
         f"[Cleanup] Removed {before - after} duplicate cid rows; kept {after} unique entries."
     )
 
-synonyms_df = pd.read_csv("data_extraction/drugs/pubchem/output_data/drug_synonyms.csv")
+synonyms_df = pd.read_csv(
+    "data_extraction/drugs/pubchem/output_data/overlap/complete/overlap_synonyms.csv"
+)
 
 # Remove any duplicate synonym entries based on cid/synonym combos
 if {"synonym", "pubchem_cid"}.issubset(synonyms_df.columns):
@@ -57,8 +63,16 @@ if {"synonym", "pubchem_cid"}.issubset(synonyms_df.columns):
         f"[Cleanup] Removed {before - after} duplicate synonym/pubchem_cid rows; kept {after} unique entries."
     )
 
+compounds_bioassays_df = pd.read_csv(
+    "data_extraction/drugs/pubchem/output_data/overlap/complete/overlap_bioassays.csv"
+)
+
+bioassays_df = pd.read_csv(
+    "data_extraction/drugs/pubchem/output_data/overlap/complete/overlap_pubchem_assay_fields.csv"
+)
+
 chembl_mech_df = pd.read_csv(
-    "data_extraction/drugs/pubchem/output_data/chembl_mechanism.csv"
+    "data_extraction/drugs/pubchem/output_data/overlap/complete/chembl_mechanism.csv"
 )
 
 valid_chembls = set(compounds_df["molecule_chembl_id"].dropna().astype(str))
@@ -88,6 +102,8 @@ oncotree_df = pd.read_csv("data_extraction/oncotree/output_data/oncotree.csv")
 # Align columns to ORM models
 compounds_df = align_to_model(compounds_df, Compounds)
 synonyms_df = align_to_model(synonyms_df, CompoundSynonyms)
+compounds_bioassays_df = align_to_model(compounds_bioassays_df, CompoundBioAssays)
+bioassays_df = align_to_model(bioassays_df, BioAssays)
 chembl_mech_df = align_to_model(chembl_mech_df, ChemblMechanism)
 cell_lines_df = align_to_model(cell_lines_df, CellLines)
 cell_lines_synonyms_df = align_to_model(cell_lines_synonyms_df, CellLineSynonyms)
@@ -100,6 +116,12 @@ compounds_df.to_sql(
 )
 synonyms_df.to_sql(
     name=CompoundSynonyms.__tablename__, con=engine, if_exists="append", index=False
+)
+bioassays_df.to_sql(
+    name=BioAssays.__tablename__, con=engine, if_exists="append", index=False
+)
+compounds_bioassays_df.to_sql(
+    name=CompoundBioAssays.__tablename__, con=engine, if_exists="append", index=False
 )
 chembl_mech_df.to_sql(
     name=ChemblMechanism.__tablename__, con=engine, if_exists="append", index=False

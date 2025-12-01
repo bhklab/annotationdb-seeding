@@ -104,6 +104,7 @@ class CompoundBioAssays(Base):
 
     bioassay_aid: Mapped[int] = mapped_column(
         Integer,
+        ForeignKey("bioassays.aid"),
         primary_key=True,
     )
     pubchem_cid: Mapped[int] = mapped_column(
@@ -116,11 +117,20 @@ class CompoundBioAssays(Base):
 class BioAssays(Base):
     __tablename__ = "bioassays"
 
-    bioassay_aid: Mapped[int] = mapped_column(
+    aid: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("compound_bioassays.cid", ondelete="CASCADE"),
         primary_key=True,
     )
+    version: Mapped[int] = mapped_column(Integer)
+    assay_name: Mapped[str] = mapped_column(String(512))
+    source_name: Mapped[str] = mapped_column(String(255))
+    source_id: Mapped[str] = mapped_column(String(255))
+    description_combined: Mapped[str] = mapped_column(Text)
+    protocol_combined: Mapped[str] = mapped_column(Text)
+    comment_combined: Mapped[str] = mapped_column(Text)
+    activity_outcome_method: Mapped[int] = mapped_column(Integer)
+    target_name: Mapped[str] = mapped_column(Text)
+    target_protein_accession: Mapped[str] = mapped_column(Text)
 
 
 # https://www.ebi.ac.uk/chembl/api/data/drug/schema?format=json
