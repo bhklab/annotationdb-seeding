@@ -80,6 +80,26 @@ class Compounds(Base):
         lazy="selectin",
     )
 
+    compound_bioassays: Mapped[list["CompoundBioAssays"]] = relationship(
+        "CompoundBioAssays",
+        back_populates="compound",
+        cascade="all, delete-orphan",
+    )
+
+    bioassays: Mapped[list["BioAssays"]] = relationship(
+        "BioAssays",
+        secondary="compound_bioassays",
+        back_populates="compounds",
+        lazy="selectin",
+    )
+
+    toxicity: Mapped["Toxicity"] = relationship(
+        "Toxicity",
+        back_populates="compound",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
 
 class CompoundSynonyms(Base):
     __tablename__ = "compound_synonyms"
@@ -131,6 +151,19 @@ class BioAssays(Base):
     activity_outcome_method: Mapped[int] = mapped_column(Integer)
     target_name: Mapped[str] = mapped_column(Text)
     target_protein_accession: Mapped[str] = mapped_column(Text)
+
+
+class Toxicity(Base):
+    __tablename__ = "toxicity"
+
+    pubchem_cid: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("pubchem_compounds.cid", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    dili_severity_grade: Mapped[int] = mapped_column(Integer)
+    dili_annotation: Mapped[str] = mapped_column(Text)
+    hepatotoxicity_likelihood_score: Mapped[str] = mapped_column(Text)
 
 
 # https://www.ebi.ac.uk/chembl/api/data/drug/schema?format=json
