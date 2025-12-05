@@ -10,6 +10,7 @@ from create_tables import (
     CompoundSynonyms,
     CompoundBioAssays,
     BioAssays,
+    Toxicity,
     ChemblMechanism,
     CellLines,
     CellLineSynonyms,
@@ -36,7 +37,7 @@ def align_to_model(df: pd.DataFrame, model) -> pd.DataFrame:
 
 
 compounds_df = pd.read_csv(
-    "data_extraction/drugs/pubchem/output_data/overlap/complete/overlap_out.csv"
+    "data_extraction/drugs/pubchem/output_data/union/complete/union_out.csv"
 )
 
 # Remove any duplicate entries based on cids
@@ -49,7 +50,7 @@ if "cid" in compounds_df.columns:
     )
 
 synonyms_df = pd.read_csv(
-    "data_extraction/drugs/pubchem/output_data/overlap/complete/overlap_synonyms.csv"
+    "data_extraction/drugs/pubchem/output_data/union/complete/union_synonyms.csv"
 )
 
 # Remove any duplicate synonym entries based on cid/synonym combos
@@ -64,15 +65,19 @@ if {"synonym", "pubchem_cid"}.issubset(synonyms_df.columns):
     )
 
 compounds_bioassays_df = pd.read_csv(
-    "data_extraction/drugs/pubchem/output_data/overlap/complete/overlap_bioassays.csv"
+    "data_extraction/drugs/pubchem/output_data/union/complete/union_bioassays.csv"
 )
 
 bioassays_df = pd.read_csv(
-    "data_extraction/drugs/pubchem/output_data/overlap/complete/overlap_pubchem_assay_fields.csv"
+    "data_extraction/drugs/pubchem/output_data/union/complete/union_pubchem_assay_fields.csv"
+)
+
+toxicity_df = pd.read_csv(
+    "data_extraction/drugs/pubchem/output_data/union/complete/toxicity_output.csv"
 )
 
 chembl_mech_df = pd.read_csv(
-    "data_extraction/drugs/pubchem/output_data/overlap/complete/chembl_mechanism.csv"
+    "data_extraction/drugs/pubchem/output_data/union/complete/chembl_mechanism.csv"
 )
 
 valid_chembls = set(compounds_df["molecule_chembl_id"].dropna().astype(str))
@@ -122,6 +127,9 @@ bioassays_df.to_sql(
 )
 compounds_bioassays_df.to_sql(
     name=CompoundBioAssays.__tablename__, con=engine, if_exists="append", index=False
+)
+toxicity_df.to_sql(
+    name=Toxicity.__tablename__, con=engine, if_exists="append", index=False
 )
 chembl_mech_df.to_sql(
     name=ChemblMechanism.__tablename__, con=engine, if_exists="append", index=False
